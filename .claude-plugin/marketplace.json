@@ -1,0 +1,11 @@
+{
+  "name": "alforofous",
+  "owner": { "name": "David Malesevic" },
+  "plugins": [
+    {
+      "name": "work-sessions",
+      "source": "./work-sessions",
+      "description": "Isolated work sessions (fresh checkout, own ports and containers, full cleanup) and a progress row for multi-step workflows"
+    }
+  ]
+}

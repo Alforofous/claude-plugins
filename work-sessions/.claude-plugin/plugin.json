@@ -1,0 +1,11 @@
+{
+  "name": "work-sessions",
+  "version": "0.1.0",
+  "description": "Isolated work sessions (fresh checkout, own ports and containers, full cleanup) and a progress row for multi-step workflows",
+  "author": {
+    "name": "David Malesevic"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Alforofous/claude-plugins",
+  "types": "./types/index.d.ts"
+}
