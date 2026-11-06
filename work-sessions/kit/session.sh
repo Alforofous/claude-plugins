@@ -110,8 +110,8 @@ lease_file() { echo "$KIT_ROOT/$1/lease.json"; }
 lease_get() { jq -r "$2 // empty" "$(lease_file "$1")" 2>/dev/null; }
 lease_set() {
   local f tmp
-  f=$(lease_file "$1"); tmp="$f.tmp"
-  jq "$2" "$f" > "$tmp" && mv "$tmp" "$f"
+  f=$(lease_file "$1"); tmp="$f.tmp"; shift
+  jq "$@" "$f" > "$tmp" && mv "$tmp" "$f"
 }
 
 lease_of_pid() {
@@ -257,8 +257,27 @@ descendants_too() {
   for p in $found; do echo "$p"; done
 }
 
+nl_has() { case $'\n'"$1"$'\n' in *$'\n'"$2"$'\n'*) return 0 ;; esac; return 1; }
+
+# Branches session $1 made: its cc/<sid>/ branches plus every branch its checkout has switched to,
+# read from the checkout's own HEAD reflog and remembered in the lease for after the checkout is gone.
+own_branches() {
+  local sid=$1 repo wt seen
+  repo=$(lease_get "$sid" .repo); wt=$(lease_get "$sid" .checkout)
+  if [ -d "$wt" ]; then
+    seen=$(git -C "$wt" reflog --format=%gs 2>/dev/null | sed -n \
+      -e 's/^checkout: moving from .* to //p' \
+      -e 's/^Branch: renamed refs\/heads\/.* to refs\/heads\///p' | jq -R . | jq -s .)
+    lease_set "$sid" --argjson seen "$seen" '.own_branches = ((.own_branches // []) + $seen | unique)'
+  fi
+  {
+    git -C "$repo" for-each-ref "refs/heads/cc/$sid/" --format='%(refname:short)'
+    lease_get "$sid" '.own_branches[]?'
+  } | sort -u
+}
+
 cmd_plan() {
-  local sid repo wt branch project before mode pid c v b s w changed
+  local sid repo wt branch project before mode pid c v b s w changed own subject
   sid=$(resolve_sid "${1:-}")
   [ -f "$(lease_file "$sid")" ] || die "no lease for session $sid."
   repo=$(lease_get "$sid" .repo); wt=$(lease_get "$sid" .checkout)
@@ -295,37 +314,50 @@ cmd_plan() {
     row branch "$b" "$(mode_for session_branch delete)" "session branch"
   done
 
+  own=$(own_branches "$sid")
+
   mode=$(mode_for new_branches ask)
   for b in $(git -C "$repo" for-each-ref refs/heads --format='%(refname:short)'); do
     case "$b" in cc/*) continue ;; esac
+    nl_has "$own" "$b" || continue
     jq -e --arg b "$b" '.before.branches | index($b)' "$before" >/dev/null || row new_branch "$b" "$mode" "created since start"
   done
   mode=$(mode_for new_stashes ask)
   for s in $(git -C "$repo" stash list --format=%H 2>/dev/null); do
-    jq -e --arg s "$s" '.before.stashes | index($s)' "$before" >/dev/null || \
-      row new_stash "$s" "$mode" "$(git -C "$repo" log -1 --format=%s "$s" 2>/dev/null)"
+    jq -e --arg s "$s" '.before.stashes | index($s)' "$before" >/dev/null && continue
+    subject=$(git -C "$repo" log -1 --format=%s "$s" 2>/dev/null)
+    b=$(printf '%s' "$subject" | sed -n -e 's/^WIP on \([^:]*\):.*/\1/p' -e 's/^On \([^:]*\):.*/\1/p')
+    [ -n "$b" ] && nl_has "$own" "$b" && row new_stash "$s" "$mode" "$subject"
   done
   mode=$(mode_for new_worktrees ask)
-  git -C "$repo" worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do
+  git -C "$repo" worktree list --porcelain | awk '
+    /^worktree / { w = substr($0, 10) }
+    /^branch refs\/heads\// { print w "\t" substr($0, 19) }' | while IFS=$'\t' read -r w b; do
     [ "$w" = "$wt" ] && continue
-    case "$w" in "$repo/.claude/worktrees/"[0-9a-f]*) [[ "$(basename "$w")" =~ $SID_RE ]] && continue ;; esac
+    nl_has "$own" "$b" || continue
     jq -e --arg w "$w" '.before.worktrees | index($w)' "$before" >/dev/null || row new_worktree "$w" "$mode" "created since start"
   done
   mode=$(mode_for new_containers ask)
   for c in $( (docker_up && docker ps -aq --no-trunc) 2>/dev/null); do
     jq -e --arg c "$c" '.before.containers | index($c)' "$before" >/dev/null && continue
     case "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$c" 2>/dev/null)" in cc-*) continue ;; esac
+    w=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$c" 2>/dev/null)
+    case "$w" in "$wt"|"$wt"/*) ;; *) continue ;; esac
     row new_container "${c:0:12}" "$mode" "$(docker inspect -f '{{.Name}} {{.Config.Image}}' "$c" 2>/dev/null)"
   done
   mode=$(mode_for git_config report)
   git -C "$repo" config --local --list | sort | while IFS= read -r line; do
-    jq -e --arg l "$line" '.before.git_config | index($l)' "$before" >/dev/null || row git_config "${line%%=*}" "$mode" "$line"
+    jq -e --arg l "$line" '.before.git_config | index($l)' "$before" >/dev/null && continue
+    b=${line%%=*}; b=${b#branch.}; b=${b%.*}
+    case "$line" in branch.*) nl_has "$own" "$b" && row git_config "${line%%=*}" "$mode" "$line" ;; esac
   done
   mode=$(mode_for pull_requests report)
   (cd "$repo" && gh pr list --author @me --state open --search "created:>=$(lease_get "$sid" .started_at)" \
-    --json number,title --jq '.[] | "\(.number)\t\(.title)"' 2>/dev/null) | while IFS=$'\t' read -r num title; do
-    row pull_request "#$num" "$mode" "$title"
-  done
+    --json number,title,headRefName --jq '.[] | "\(.number)\t\(.headRefName)\t\(.title)"' 2>/dev/null) |
+    while IFS=$'\t' read -r num b title; do
+      nl_has "$own" "$b" && row pull_request "#$num" "$mode" "$title"
+    done
+  return 0
 }
 
 kill_ladder() {
@@ -407,7 +439,7 @@ cmd_apply() {
   while IFS=$'\t' read -r kind id mode _; do
     [ -n "$kind" ] || continue
     [ "$mode" = ask ] && [ "$kind" != unsaved ] || continue
-    case "$approved" in *" $kind:$id "*) ;; *) pending=1; continue ;; esac
+    case "$approved" in *" $kind:$id "*) ;; *) [ -n "$noninteractive" ] && pending=1; continue ;; esac
     case "$kind" in
       new_stash) drop_stash "$repo" "$id" ;;
       new_worktree) git -C "$repo" worktree remove --force "$id" ;;

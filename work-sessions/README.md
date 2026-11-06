@@ -2,7 +2,7 @@
 
 Two things for Claude Code sessions that do real work in a repository:
 
-- **`/session-start` and `/session-end`.** A session gets its own checkout on its own branch, its own ports and containers, and when it ends everything it made is removed. It asks only about unsaved work and about things it can't prove are its own.
+- **`/session-start` and `/session-end`.** A session gets its own checkout on its own branch, its own ports and containers, and when it ends everything it made is removed. It asks only about unsaved work and about extra things it made beside its session branch, and never lists what another session made.
 - **A progress row above the prompt** for any multi-step workflow: `ENG-42 ●●●●◉○○○○○ 5/10 Build   next Commit`. A workflow skill reports its steps through the `progress` tool, and the row follows along.
 
 ## Install
