@@ -409,7 +409,6 @@ cmd_apply() {
     [ "$mode" = ask ] && [ "$kind" != unsaved ] || continue
     case "$approved" in *" $kind:$id "*) ;; *) pending=1; continue ;; esac
     case "$kind" in
-      new_branch) git -C "$repo" branch -q -D "$id" ;;
       new_stash) drop_stash "$repo" "$id" ;;
       new_worktree) git -C "$repo" worktree remove --force "$id" ;;
       new_container) docker rm -f "$id" >/dev/null ;;
@@ -421,6 +420,12 @@ cmd_apply() {
     git -C "$repo" worktree remove --force "$wt" 2>/dev/null || rm -rf "${wt:?}"
   fi
   git -C "$repo" worktree prune
+
+  while IFS=$'\t' read -r kind id mode _; do
+    [ "$kind" = new_branch ] && [ "$mode" = ask ] || continue
+    case "$approved" in *" $kind:$id "*) git -C "$repo" branch -q -D "$id" ;; esac
+  done <<< "$plan"
+
   if [ "$(mode_for session_branch delete)" = delete ]; then
     git -C "$repo" for-each-ref "refs/heads/cc/$sid/" --format='%(refname:short)' | while read -r b; do
       git -C "$repo" branch -q -D "$b"

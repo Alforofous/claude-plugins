@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[session-id]"
 ---
 
-`<KIT>` below is `kit/session.sh` in this plugin: two folders up from this skill's base directory. The session ID is the argument if given; otherwise the kit finds this session's own lease.
+`<KIT>` below is `kit/session.sh` in this plugin: two folders up from this skill's base directory. Run it as a command (`<KIT> plan`); it is a bash script, so `sh <KIT>` fails. The session ID is the argument if given; otherwise the kit finds this session's own lease.
 
 1. Stop Claude-side things this session started: every background Bash task and Monitor (TaskStop), session crons (CronList → CronDelete).
 2. `cd` back to the repository root (the main checkout, not the session checkout).
