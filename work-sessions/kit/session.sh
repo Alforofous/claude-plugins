@@ -22,6 +22,7 @@ set -u
 KIT_ROOT="$HOME/.cc/sessions"
 CONFIG="${WORK_SESSIONS_CONFIG:-$HOME/.claude/work-sessions.conf}"
 SID_RE='^[0-9a-f]{8}$'
+PLUGIN_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 die() { echo "session: $*" >&2; exit 1; }
 
@@ -165,6 +166,21 @@ snapshot_json() {
     '{branches: $branches, stashes: $stashes, worktrees: $worktrees, containers: $containers, git_config: $git_config}'
 }
 
+version_notice() {
+  local market mdir src mine latest
+  mine=$(jq -r '.version // empty' "$PLUGIN_DIR/.claude-plugin/plugin.json" 2>/dev/null)
+  market=$(basename "$(dirname "$(dirname "$PLUGIN_DIR")")")
+  mdir="$HOME/.claude/plugins/marketplaces/$market"
+  [ -n "$mine" ] && [ -d "$mdir/.git" ] || return 0
+  src=$(jq -r '.plugins[] | select(.name == "work-sessions") | .source' "$mdir/.claude-plugin/marketplace.json" 2>/dev/null)
+  [ -n "$src" ] || return 0
+  git -C "$mdir" -c http.lowSpeedLimit=1 -c http.lowSpeedTime=5 fetch -q 2>/dev/null || return 0
+  latest=$(git -C "$mdir" show "@{u}:${src#./}/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty')
+  [ -n "$latest" ] && [ "$latest" != "$mine" ] || return 0
+  [ "$(printf '%s\n%s\n' "$mine" "$latest" | sort -V | tail -1)" = "$latest" ] || return 0
+  echo "→ work-sessions $mine runs here; $latest is published. Run /plugin marketplace update $market, then /reload-plugins."
+}
+
 cmd_start() {
   local slug=${1:-} sid repo cpid wt n base project=""
   [ -n "$slug" ] || die "usage: session.sh start <slug>"
@@ -194,6 +210,7 @@ cmd_start() {
       checkout: $wt, branch: $branch, docker_project: $project, slot: $slot, ports: $ports,
       started_at: $started, before: $before}' > "$(lease_file "$sid")"
 
+  version_notice
   echo "→ lease $sid, port slot $n"
   git -C "$repo" fetch -q origin "$base" || die "git fetch origin $base failed."
   git -C "$repo" worktree add -q -b "cc/$sid/$slug" "$wt" "origin/$base" || die "git worktree add failed."
