@@ -12,6 +12,6 @@ argument-hint: "[session-id]"
 3. Run `<KIT> plan [id]`. Output is tab-separated: kind, id, mode, detail. Show it as a compact table grouped by mode (delete / ask / report).
 4. Ask with ONE AskUserQuestion call, only if there are `ask` rows:
    - `unsaved` rows → one question: "Push / Discard / Keep session". On Push: push the branch (`git -C <checkout> push -u origin <branch>`, commit first only if the user says so), then re-run plan.
-   - other `ask` rows → one multiSelect question listing them; selected = delete, unselected = keep.
+   - other `ask` rows → one multiSelect question listing them, selected = delete, unselected = keep; with a single such row, one Delete / Keep question naming it instead.
 5. Run `<KIT> apply [id]` with `--delete <kind>:<id>` for each selected row and `--unsaved discard` or `--unsaved keep` when unsaved rows existed.
 6. Report the script's last line, plus the `report` rows (pushed PRs, git settings) in one short list. Nothing else.
