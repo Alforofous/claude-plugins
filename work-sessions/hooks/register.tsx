@@ -43,7 +43,8 @@ const shellQuote = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`
 
 async function sessionEnvFile($: EngineInterface): Promise<string | null> {
   try {
-    const id = await read($, sessionId)
+    const claudeSession = await $.env.get('CLAUDE_CODE_SESSION_ID')
+    const id = (await read($, sessionId)) ?? (claudeSession === undefined ? null : shortId(claudeSession))
     const home = await $.env.get('HOME')
     if (id === null || home === undefined) return null
     const file = `${home}/.cc/sessions/${id}/env`
@@ -102,8 +103,8 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const envFile = (await sessionEnvFile($)) ?? `${$.plugin.root}/kit/session-env.sh`
-    const ran = await next({ ...e, command: `. ${shellQuote(envFile)} && ${e.command}` })
+    const envFile = await sessionEnvFile($)
+    const ran = await next(envFile === null ? e : { ...e, command: `. ${shellQuote(envFile)} && ${e.command}` })
 
     try {
       const shown = await read($, progress)
