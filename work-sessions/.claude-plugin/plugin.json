@@ -1,6 +1,6 @@
 {
   "name": "work-sessions",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Isolated work sessions (fresh checkout, own ports and containers, full cleanup) and a progress row for multi-step workflows",
   "author": {
     "name": "David Malesevic"
