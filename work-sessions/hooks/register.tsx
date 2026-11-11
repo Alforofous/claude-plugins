@@ -102,8 +102,8 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const envFile = await sessionEnvFile($)
-    const ran = await next(envFile === null ? e : { ...e, command: `. ${shellQuote(envFile)} && ${e.command}` })
+    const envFile = (await sessionEnvFile($)) ?? `${$.plugin.root}/kit/session-env.sh`
+    const ran = await next({ ...e, command: `. ${shellQuote(envFile)} && ${e.command}` })
 
     try {
       const shown = await read($, progress)
